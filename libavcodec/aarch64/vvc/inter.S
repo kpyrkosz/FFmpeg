@@ -36,19 +36,24 @@
 .endif
 
 .ifc \type, avg
-        saddl           v4.4s, v0.4h, v2.4h
-        add             v4.4s, v4.4s, v16.4s
-        sqshrun         v4.4h, v4.4s, #(15 - \bit_depth)
+        shadd           v4.4h, v0.4h, v2.4h
+.if \bit_depth == 8
+        sqrshrun        v4.8b, v4.8h, #(15 - 1 - \bit_depth)
+.else
+        srshr           v4.4h, v4.4h, #(15 - 1 - \bit_depth)
+.endif
 .else
         mov             v4.16b, v16.16b
         smlal           v4.4s, v0.4h, v19.4h
         smlal           v4.4s, v2.4h, v20.4h
         sqshl           v4.4s, v4.4s, v22.4s
         sqxtun          v4.4h, v4.4s
+.if \bit_depth == 8
+        sqxtun          v4.8b, v4.8h
+.endif
 .endif
 
 .if \bit_depth == 8
-        sqxtun          v4.8b, v4.8h
 .if \tap == 2
         str             h4, [dst]
 .else   // tap == 4
@@ -84,10 +89,9 @@ function ff_vvc_\type\()_\bit_depth\()_neon, export=1
         lsr             x11, x6, #32        // weight0
         mov             w12, w6             // weight1
         lsr             x13, x7, #32        // offset
-        mov             w14, w7             // shift
+        neg             w14, w7             // so we can use sqshl
 
         dup             v19.8h, w11
-        neg             w14, w14            // so we can use sqshl
         dup             v20.8h, w12
         dup             v16.4s, w13
         dup             v22.4s, w14
@@ -117,12 +121,12 @@ function ff_vvc_\type\()_\bit_depth\()_neon, export=1
         ld1             {v0.8h}, [src0], x10
         ld1             {v2.8h}, [src1], x10
 .ifc \type, avg
-        saddl           v4.4s, v0.4h, v2.4h
-        saddl2          v5.4s, v0.8h, v2.8h
-        add             v4.4s, v4.4s, v16.4s
-        add             v5.4s, v5.4s, v16.4s
-        sqshrun         v4.4h, v4.4s, #(15 - \bit_depth)
-        sqshrun2        v4.8h, v5.4s, #(15 - \bit_depth)
+        shadd           v4.8h, v0.8h, v2.8h
+.if \bit_depth == 8
+        sqrshrun        v4.8b, v4.8h, #(15 - 1 - \bit_depth)
+.else
+        srshr           v4.8h, v4.8h, #(15 - 1 - \bit_depth)
+.endif
 .else
         mov             v4.16b, v16.16b
         mov             v5.16b, v16.16b
@@ -134,10 +138,12 @@ function ff_vvc_\type\()_\bit_depth\()_neon, export=1
         sqshl           v5.4s, v5.4s, v22.4s
         sqxtun          v4.4h, v4.4s
         sqxtun2         v4.8h, v5.4s
+.if \bit_depth == 8
+        sqxtun          v4.8b, v4.8h
+.endif
 .endif
         subs            height, height, #1
 .if \bit_depth == 8
-        sqxtun          v4.8b, v4.8h
         st1             {v4.8b}, [dst], dst_stride
 .else
         umin            v4.8h, v4.8h, v17.8h
@@ -154,18 +160,23 @@ function ff_vvc_\type\()_\bit_depth\()_neon, export=1
         ldp             q0, q1, [x7], #32
         ldp             q2, q3, [x8], #32
 .ifc \type, avg
-        saddl           v4.4s, v0.4h, v2.4h
-        saddl2          v5.4s, v0.8h, v2.8h
-        saddl           v6.4s, v1.4h, v3.4h
-        saddl2          v7.4s, v1.8h, v3.8h
-        add             v4.4s, v4.4s, v16.4s
-        add             v5.4s, v5.4s, v16.4s
-        add             v6.4s, v6.4s, v16.4s
-        add             v7.4s, v7.4s, v16.4s
-        sqshrun         v4.4h, v4.4s, #(15 - \bit_depth)
-        sqshrun2        v4.8h, v5.4s, #(15 - \bit_depth)
-        sqshrun         v6.4h, v6.4s, #(15 - \bit_depth)
-        sqshrun2        v6.8h, v7.4s, #(15 - \bit_depth)
+
+.if \bit_depth == 8
+        shadd           v4.8h, v0.8h, v2.8h
+        shadd           v6.8h, v1.8h, v3.8h
+        sqrshrun        v4.8b, v4.8h, #(15 - 1 - \bit_depth)
+        sqrshrun2       v4.16b, v6.8h, #(15 - 1 - \bit_depth)
+        str             q4, [x9], #16
+.else
+        shadd           v4.8h, v0.8h, v2.8h
+        shadd           v6.8h, v1.8h, v3.8h
+        srshr           v4.8h, v4.8h, #(15 - 1 - \bit_depth)
+        srshr           v6.8h, v6.8h, #(15 - 1 - \bit_depth)
+
+        umin            v4.8h, v4.8h, v17.8h
+        umin            v6.8h, v6.8h, v17.8h
+        stp             q4, q6, [x9], #32
+.endif
 .else   // avg
         mov             v4.16b, v16.16b
         mov             v5.16b, v16.16b
@@ -187,8 +198,6 @@ function ff_vvc_\type\()_\bit_depth\()_neon, export=1
         sqxtun          v6.4h, v6.4s
         sqxtun2         v4.8h, v5.4s
         sqxtun2         v6.8h, v7.4s
-.endif  // w_avg
-        subs            w6, w6, #16
 .if \bit_depth == 8
         sqxtun          v4.8b, v4.8h
         sqxtun2         v4.16b, v6.8h
@@ -198,6 +207,9 @@ function ff_vvc_\type\()_\bit_depth\()_neon, export=1
         umin            v6.8h, v6.8h, v17.8h
         stp             q4, q6, [x9], #32
 .endif
+.endif  // w_avg
+        subs            w6, w6, #16
+
         b.ne            17b
 
         subs            height, height, #1
