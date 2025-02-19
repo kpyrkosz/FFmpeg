@@ -435,6 +435,8 @@ function ff_vvc_dmvr_hv_8_neon, export=1
         // We know the value are positive
         dup             v0.8h, w10                  // filter_x[0]
         dup             v1.8h, w11                  // filter_x[1]
+        dup             v18.16b, w10                  // filter_x[0]
+        dup             v19.16b, w11                  // filter_x[1]
 
         add             x12, x9, my, lsl #1
         ldrb            w10, [x12]
@@ -459,14 +461,10 @@ function ff_vvc_dmvr_hv_8_neon, export=1
         // width > 16
         ldur            q5, [src, #1]
         ldr             q4, [src], #16
-        uxtl            v7.8h, v5.8b
-        uxtl2           v17.8h, v5.16b
-        uxtl            v6.8h, v4.8b
-        uxtl2           v16.8h, v4.16b
-        mul             v6.8h, v6.8h, v0.8h
-        mul             v16.8h, v16.8h, v0.8h
-        mla             v6.8h, v7.8h, v1.8h
-        mla             v16.8h, v17.8h, v1.8h
+        umull           v6.8h, v4.8b, v18.8b
+        umull2          v16.8h, v4.16b, v18.16b
+        umlal           v6.8h, v5.8b, v19.8b
+        umlal2          v16.8h, v5.16b, v19.16b
         urshr           v6.8h, v6.8h, #(8 - 6)
         urshr           v7.8h, v16.8h, #(8 - 6)
         stp             q6, q7, [x13], #32
@@ -531,17 +529,10 @@ function ff_vvc_dmvr_hv_8_neon, export=1
         ret
 endfunc
 
-function ff_vvc_dmvr_hv_12_neon, export=1
-        movi            v29.4s, #(12 - 6)
-        movi            v30.4s, #(1 << (12 - 7))    // offset1
-        b               0f
-endfunc
-
-function ff_vvc_dmvr_hv_10_neon, export=1
-        movi            v29.4s, #(10 - 6)
-        movi            v30.4s, #(1 << (10 - 7))    // offset1
+.macro qq bit_depth
+function ff_vvc_dmvr_hv_\bit_depth\()_neon, export=1
+        movi            v29.4s, #(\bit_depth - 6)
 0:
-        movi            v31.4s, #8                  // offset2
         neg             v29.4s, v29.4s
 
         sub             sp, sp, #(VVC_MAX_PB_SIZE * 4)
@@ -589,18 +580,10 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         umlal           v18.4s, v17.4h, v1.4h
         umlal2          v19.4s, v17.8h, v1.8h
 
-        add             v4.4s, v4.4s, v30.4s
-        add             v5.4s, v5.4s, v30.4s
-        add             v18.4s, v18.4s, v30.4s
-        add             v19.4s, v19.4s, v30.4s
-        ushl            v4.4s, v4.4s, v29.4s
-        ushl            v5.4s, v5.4s, v29.4s
-        ushl            v18.4s, v18.4s, v29.4s
-        ushl            v19.4s, v19.4s, v29.4s
-        uqxtn           v6.4h, v4.4s
-        uqxtn2          v6.8h, v5.4s
-        uqxtn           v7.4h, v18.4s
-        uqxtn2          v7.8h, v19.4s
+        uqrshrn         v6.4h, v4.4s,  #(\bit_depth - 6)
+        uqrshrn2        v6.8h, v5.4s,  #(\bit_depth - 6)
+        uqrshrn         v7.4h, v18.4s,  #(\bit_depth - 6)
+        uqrshrn2        v7.8h, v19.4s,  #(\bit_depth - 6)
         stp             q6, q7, [x13], #32
 
         cbz             w10, 3f
@@ -614,18 +597,10 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         umlal2          v18.4s, v6.8h, v3.8h
         umlal           v19.4s, v7.4h, v3.4h
         umlal2          v20.4s, v7.8h, v3.8h
-        add             v17.4s, v17.4s, v31.4s
-        add             v18.4s, v18.4s, v31.4s
-        add             v19.4s, v19.4s, v31.4s
-        add             v20.4s, v20.4s, v31.4s
-        ushr            v17.4s, v17.4s, #4
-        ushr            v18.4s, v18.4s, #4
-        ushr            v19.4s, v19.4s, #4
-        ushr            v20.4s, v20.4s, #4
-        uqxtn           v6.4h, v17.4s
-        uqxtn2          v6.8h, v18.4s
-        uqxtn           v7.4h, v19.4s
-        uqxtn2          v7.8h, v20.4s
+        uqrshrn         v6.4h, v17.4s, #4
+        uqrshrn2        v6.8h, v18.4s, #4
+        uqrshrn         v7.4h, v19.4s, #4
+        uqrshrn2        v7.8h, v20.4s, #4
         stp             q6, q7, [x14], #32
         b               3f
 2:
@@ -637,10 +612,8 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         umlal           v4.4s, v7.4h, v1.4h
         umlal2          v5.4s, v7.8h, v1.8h
 
-        add             v4.4s, v4.4s, v30.4s
-        add             v5.4s, v5.4s, v30.4s
-        ushl            v4.4s, v4.4s, v29.4s
-        ushl            v5.4s, v5.4s, v29.4s
+        urshl           v4.4s, v4.4s, v29.4s
+        urshl           v5.4s, v5.4s, v29.4s
         uqxtn           v6.4h, v4.4s
         uqxtn2          v6.8h, v5.4s
         str             q6, [x13], #16
@@ -652,10 +625,8 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         umull2          v18.4s, v16.8h, v2.8h
         umlal           v17.4s, v6.4h, v3.4h
         umlal2          v18.4s, v6.8h, v3.8h
-        add             v17.4s, v17.4s, v31.4s
-        add             v18.4s, v18.4s, v31.4s
-        ushr            v17.4s, v17.4s, #4
-        ushr            v18.4s, v18.4s, #4
+        urshr           v17.4s, v17.4s, #4
+        urshr           v18.4s, v18.4s, #4
         uqxtn           v16.4h, v17.4s
         uqxtn2          v16.8h, v18.4s
         str             q16, [x14], #16
@@ -664,8 +635,7 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         ldr             d6, [src], #8
         umull           v4.4s, v7.4h, v1.4h
         umlal           v4.4s, v6.4h, v0.4h
-        add             v4.4s, v4.4s, v30.4s
-        ushl            v4.4s, v4.4s, v29.4s
+        urshl           v4.4s, v4.4s, v29.4s
         uqxtn           v6.4h, v4.4s
         str             d6, [x13], #8
 
@@ -674,8 +644,7 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         ldr             d16, [x12], #8
         umull           v17.4s, v16.4h, v2.4h
         umlal           v17.4s, v6.4h, v3.4h
-        add             v17.4s, v17.4s, v31.4s
-        ushr            v17.4s, v17.4s, #4
+        urshr           v17.4s, v17.4s, #4
         uqxtn           v16.4h, v17.4s
         str             d16, [x14], #8
 4:
@@ -691,6 +660,13 @@ function ff_vvc_dmvr_hv_10_neon, export=1
         add             sp, sp, #(VVC_MAX_PB_SIZE * 4)
         ret
 
+
+endfunc
+.endm
+
+qq 10
+qq 12
+
 .unreq dst
 .unreq src
 .unreq src_stride
@@ -700,8 +676,6 @@ function ff_vvc_dmvr_hv_10_neon, export=1
 .unreq width
 .unreq tmp0
 .unreq tmp1
-endfunc
-
 function ff_vvc_prof_grad_filter_8x_neon, export=1
         gh              .req x0
         gv              .req x1
@@ -942,19 +916,15 @@ function ff_vvc_derive_bdof_vx_vy_neon, export=1
 21:
         sshr            v0.8h, v0.8h, #4
         sshr            v1.8h, v1.8h, #4
-        add             v2.8h, v2.8h, v3.8h
-        add             v4.8h, v4.8h, v5.8h
+        shadd           v2.8h, v2.8h, v3.8h
+        shadd           v4.8h, v4.8h, v5.8h
         sub             v0.8h, v0.8h, v1.8h         // diff
-        sshr            v2.8h, v2.8h, #1            // temph
-        sshr            v4.8h, v4.8h, #1            // tempv
 
         sshr            v16.8h, v16.8h, #4
         sshr            v17.8h, v17.8h, #4
-        add             v18.8h, v18.8h, v19.8h
-        add             v20.8h, v20.8h, v21.8h
+        shadd           v18.8h, v18.8h, v19.8h
+        shadd           v20.8h, v20.8h, v21.8h
         sub             v16.8h, v16.8h, v17.8h      // diff
-        sshr            v18.8h, v18.8h, #1          // temph
-        sshr            v20.8h, v20.8h, #1          // tempv
 
         abs             v3.8h, v2.8h
         abs             v5.8h, v4.8h
