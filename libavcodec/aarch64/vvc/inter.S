@@ -241,33 +241,30 @@ function ff_vvc_dmvr_8_neon, export=1
         my              .req x5
         width           .req w6
 
-        sxtw            x6, w6
-        mov             x7, #(VVC_MAX_PB_SIZE * 2 + 8)
-        cmp             width, #16
-        sub             src_stride, src_stride, x6
-        cset            w15, gt                     // width > 16
-        movi            v16.8h, #2                  // DMVR_SHIFT
-        sub             x7, x7, x6, lsl #1
-1:
-        cbz             w15, 2f
-        ldr             q0, [src], #16
+        tbnz            w6, #3, 12f
+20:
+        ldr             q0, [src]
+        subs            height, height, #1
         ushll           v1.8h, v0.8b, #2
         ushll2          v2.8h, v0.16b, #2
         stp             q1, q2, [dst], #32
-        b               3f
-2:
-        ldr             d0, [src], #8
+        ldr             s3, [src, #16]
+        ushll           v4.8h, v3.8b, #2
+        str             d4, [dst], #(VVC_MAX_PB_SIZE * 2 + 8 - 2 * 20)
+        add             src, src, src_stride
+        b.ne            20b
+        ret
+
+12:
+        ldr             d0, [src]
+        subs            height, height, #1
         ushll           v1.8h, v0.8b, #2
         str             q1, [dst], #16
-3:
-        subs            height, height, #1
-        ldr             s3, [src], #4
+        ldr             s3, [src, #8]
         ushll           v4.8h, v3.8b, #2
-        st1             {v4.4h}, [dst], x7
-
+        str             d4, [dst], #(VVC_MAX_PB_SIZE * 2 + 8 - 2 * 12)
         add             src, src, src_stride
-        b.ne            1b
-
+        b.ne            12b
         ret
 endfunc
 
